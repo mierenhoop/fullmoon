@@ -349,7 +349,8 @@ end
 
 --[[-- template engine --]]--
 
-local templates, vars = {}, {}
+local templates, vars, templatelocs = {}, {}, {}
+local setTemplate
 local stack, blocks = {}, {}
 -- `blocks` is a table behind proxy tables indexed by actual `block` tables in each template
 -- where the values are defined blocks and their functions
@@ -383,8 +384,20 @@ local metablock = {
 }
 local function render(name, opt)
   argerror(type(name) == "string", 1, "(string expected)")
-  argerror(templates[name], 1, "(unknown template name '"..tostring(name).."')")
   argerror(not opt or type(opt) == "table", 2, "(table expected)")
+  if not templates[name] then
+    for _, folders in ipairs(templatelocs) do
+      for _, folder in ipairs(folders) do
+        for ext, typ in pairs(folders) do
+          local testpath = path.join(folder, name.."."..ext)
+          if type(ext) == "string" and GetAssetMode(testpath) then
+            setTemplate(name, {LoadAsset(testpath), type = typ, path = testpath})
+          end
+        end
+      end
+    end
+  end
+  argerror(templates[name], 1, "(unknown template name '"..tostring(name).."')")
   -- assign default parameters, but allow to overwrite
   local params = {vars = vars, block = setmetatable({[blocks] = name}, metablock)}
   local env = getfenv(templates[name].handler)
@@ -404,12 +417,13 @@ local function render(name, opt)
   return res or "", more or {ContentType = templates[name].ContentType}
 end
 
-local function setTemplate(name, code, opt)
+setTemplate = function(name, code, opt)
   -- name as a table designates a list of prefixes for assets paths
   -- to load templates from;
   -- its hash values provide mapping from extensions to template types
   if type(name) == "table" then
     local tmpls = {}
+    table.insert(templatelocs, name)
     for _, prefix in ipairs(name) do
       local paths = GetZipPaths(prefix)
       for _, path in ipairs(paths) do
