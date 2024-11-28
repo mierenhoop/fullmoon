@@ -1725,7 +1725,7 @@ fm.setTemplate("cgi", function(cmd)
     local cfd = GetClientFd()
     while true do
       -- block for a bit until there is output from the launched process
-      local se = (unix.poll({[rfd1] = unix.POLLIN}, maxtime*1000/10) or {})[rfd1] or 0
+      local se = (unix.poll({[rfd1] = unix.POLLIN}, isactive and maxtime*1000/10 or 0) or {})[rfd1] or 0
       if se & (unix.POLLHUP + unix.POLLERR) > 0 then break end
 
       -- check if the client is (still) writable
@@ -1791,8 +1791,14 @@ fm.setTemplate("cgi", function(cmd)
         break
       end
       -- stop reading if the process is already done
-      done = not unix.wait(pid, unix.WNOHANG)
-      if done then break end
+      local termpid = unix.wait(pid, unix.WNOHANG)
+      if not termpid then
+        done = true
+        break
+      elseif termpid == pid then
+        done = true
+        isactive = false
+      end
     end
     unix.close(rfd1)
     unix.close(wfd1)
